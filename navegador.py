@@ -134,8 +134,14 @@ class SistemaEmissao:
             for linha in linhas:
                 colunas = linha.query_selector_all('td')
                 if not colunas: continue
-                input_hidden = linha.query_selector("input[type='hidden']")
-                id_hidden = input_hidden.get_attribute("value") if input_hidden else None
+                
+                # Captura o ID Único (geralmente na primeira coluna, começando com #)
+                id_unico = colunas[0].inner_text().strip()
+                if not id_unico.startswith("#"):
+                    # Fallback para o campo hidden se a coluna 0 não for o ID #
+                    input_hidden = linha.query_selector("input[type='hidden']")
+                    id_unico = input_hidden.get_attribute("value") if input_hidden else f"row_{linhas.index(linha)}"
+                
                 nome = colunas[2].inner_text().strip()
                 texto_col_apolice = colunas[1].inner_text().strip()
                 partes = texto_col_apolice.split('\n')
@@ -143,18 +149,19 @@ class SistemaEmissao:
                 seguradora = colunas[3].inner_text().strip()
                 select_element = linha.query_selector('select')
                 valor = select_element.input_value() if select_element else ""
-                # Processa tudo que NÃO seja "Sim" (inclui "Não", "Selecione", em branco)
-                if valor != "Sim" and id_hidden not in self.processados:
-                    self.processados.add(id_hidden)
+                
+                # Processa tudo que NÃO seja "Sim" e não tenha sido processado ainda
+                if valor != "Sim" and id_unico not in self.processados:
+                    self.processados.add(id_unico)
                     linha.scroll_into_view_if_needed()
-                    logger.info(f"Cliente: {nome} | Apólice: {apolice} | Seg: {seguradora} | ID: {id_hidden}")
-                    return nome, apolice, seguradora, select_element
+                    logger.info(f"Cliente: {nome} | Apólice: {apolice} | Seg: {seguradora} | ID: {id_unico}")
+                    return nome, apolice, seguradora, select_element, id_unico
         except Exception as e:
             logger.error(f"Erro ao obter cliente: {str(e)}")
             # Se for timeout, pode ser que a sessão expirou e estamos na página de login ou erro
             if "timeout" in str(e).lower() or "closed" in str(e).lower() or "connection" in str(e).lower() or "target" in str(e).lower():
                 raise e
-        return None, None, None, None
+        return None, None, None, None, None
 
     def marcar_como_cadastrado(self, select_element, recarregar=True):
         if select_element:

@@ -77,7 +77,33 @@ if __name__ == "__main__":
             if usuario_a_cadastrar == "Geral":
                 modo_geral = True
                 lista_geral = nomes[:-1] # Pega todos exceto o 'Geral'
-                usuario_a_cadastrar = lista_geral[0]
+                
+                # --- NOVO: Lógica de Persistência ---
+                utilitarios = Utils() # Inicializamos cedo para checar progresso
+                idx_salvo, ids_salvos = utilitarios.carregar_progresso()
+                
+                if idx_salvo > 0 or ids_salvos:
+                    print(f"\nFOI DETECTADO UM PROGRESSO ANTERIOR (Usuário {lista_geral[idx_salvo % len(lista_geral)]}).")
+                    print("1. Iniciar do ZERO")
+                    print("2. Retomar de onde parou")
+                    try:
+                        decisao = int(input("\nSua escolha: "))
+                        if decisao == 2:
+                            index_geral = idx_salvo
+                            usuario_a_cadastrar = lista_geral[index_geral % len(lista_geral)]
+                            logger.info(f"Retomando progresso do usuário: {usuario_a_cadastrar} na posição {index_geral}")
+                        else:
+                            utilitarios.limpar_progresso()
+                            index_geral = 0
+                            usuario_a_cadastrar = lista_geral[0]
+                            logger.info("Reiniciando do zero (arquivo de progresso removido).")
+                    except:
+                        index_geral = 0
+                        usuario_a_cadastrar = lista_geral[0]
+                else:
+                    index_geral = 0
+                    usuario_a_cadastrar = lista_geral[0]
+                
                 logger.info("Modo GERAL ativado: o bot irá percorrer todos os usuários da lista.")
         except Exception:
             print("Escolha inválida!")
@@ -103,6 +129,11 @@ if __name__ == "__main__":
     agger = AggerDesktop()
     
     # Setup Inicial
+    if modo_geral:
+        idx_salvo, ids_salvos = utilitarios.carregar_progresso()
+        if ids_salvos:
+            sistema.processados = ids_salvos
+    
     configurar_sistema_fiador(sistema, usuario_a_cadastrar)
 
     erros_consecutivos = 0
@@ -143,13 +174,22 @@ if __name__ == "__main__":
                     continue
 
             logger.info(f"Buscando cliente para: {usuario_a_cadastrar}...")
-            nome, apolice, seguradora, select_element = sistema.obter_proximo_cliente()
+            nome, apolice, seguradora, select_element, id_unico = sistema.obter_proximo_cliente()
             
             if not nome or not apolice:
                 if modo_geral:
                     # Muda para o próximo usuário da lista
-                    index_geral = (index_geral + 1) % len(lista_geral)
-                    usuario_a_cadastrar = lista_geral[index_geral]
+                    index_geral = index_geral + 1
+                    
+                    # Se completou toda a lista de usuários
+                    if index_geral >= len(lista_geral):
+                        logger.info("Ciclo GERAL concluído por completo!")
+                        utilitarios.limpar_progresso()
+                        index_geral = 0
+                    else:
+                        utilitarios.salvar_progresso(index_geral, sistema.processados)
+                    
+                    usuario_a_cadastrar = lista_geral[index_geral % len(lista_geral)]
                     logger.info(f"Sem clientes para o usuário anterior. Mudando para próximo: {usuario_a_cadastrar}")
                     
                     sistema.processados.clear()
@@ -189,6 +229,10 @@ if __name__ == "__main__":
                 relatorio.adicionar_registro(nome, apolice, "Pulado", "Endosso detectado")
                 precisa_recarregar = False
                 
+                # Salva progresso (marcado como processado para não repetir)
+                if modo_geral:
+                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+
                 contador_nao += 1
                 if contador_nao >= 3:
                     logger.info("Executando restauração preventiva do Agger (3 marcações de 'Não')...")
@@ -203,6 +247,10 @@ if __name__ == "__main__":
                 erros_consecutivos += 1
                 precisa_recarregar = False
                 
+                # Salva progresso
+                if modo_geral:
+                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+
                 contador_nao += 1
                 if contador_nao >= 3:
                     logger.info("Executando restauração preventiva do Agger (3 marcações de 'Não')...")
@@ -221,6 +269,10 @@ if __name__ == "__main__":
                 relatorio.adicionar_registro(nome, apolice, "Pendente", "Pendente de Emissão no Agger")
                 erros_consecutivos = 0
                 
+                # Salva progresso
+                if modo_geral:
+                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+
                 contador_nao += 1
                 if contador_nao >= 3:
                     logger.info("Executando restauração preventiva do Agger (3 marcações de 'Não')...")
@@ -234,12 +286,20 @@ if __name__ == "__main__":
                 relatorio.adicionar_registro(nome, apolice, "Sucesso")
                 erros_consecutivos = 0
                 contador_nao = 0 # Resetamos o contador se houve sucesso
+                
+                # Salva progresso após sucesso
+                if modo_geral:
+                    utilitarios.salvar_progresso(index_geral, sistema.processados)
             else:
                 logger.error("Falha no Agger Desktop")
                 sistema.marcar_como_nao_cadastrado(select_element)
                 relatorio.adicionar_registro(nome, apolice, "Falha", "Erro no Agger Desktop")
                 erros_consecutivos += 1
                 
+                # Salva progresso
+                if modo_geral:
+                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+
                 contador_nao += 1
                 if contador_nao >= 3:
                     logger.info("Executando restauração preventiva do Agger (3 marcações de 'Não')...")

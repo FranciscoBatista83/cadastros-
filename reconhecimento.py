@@ -22,6 +22,15 @@ reader = easyocr.Reader(['pt', 'en'], gpu=False)
 
 PAUSA = 2
 
+def ler_com_timeout(imagem, timeout=60, **kwargs):
+    """Executa o OCR em uma thread separada com suporte a timeout."""
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(reader.readtext, imagem, **kwargs)
+        try:
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            raise OCRTimeoutError("O processo de OCR excedeu o limite de 60 segundos.")
+
 def limpar_string_comparacao(s):
     """Remove tudo que não for número"""
     return re.sub(r'\D', '', str(s))
@@ -41,13 +50,6 @@ def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
     """
     Localiza um texto na tela usando EasyOCR com sistema de timeout.
     """
-    def ler_com_timeout(imagem, timeout=60, **kwargs):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(reader.readtext, imagem, **kwargs)
-            try:
-                return future.result(timeout=timeout)
-            except concurrent.futures.TimeoutError:
-                raise OCRTimeoutError("O processo de OCR excedeu o limite de 60 segundos.")
     logger.info(f"Tentando localizar texto: '{texto_alvo}'")
     
     if regiao is None:

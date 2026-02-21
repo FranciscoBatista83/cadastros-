@@ -149,30 +149,39 @@ class Utils:
         logger.info(f"Nome limpo: '{nome}'")
         return nome
 
-    def salvar_progresso(self, index_geral, ids_processados, arquivo="progresso_geral.json"):
-        """Salva o índice atual e a lista de IDs processados em um arquivo JSON."""
+    def salvar_progresso(self, start_index, passos_concluidos, ids_processados, arquivo="progresso_geral.json"):
+        """Salva o estado do iterador circular e a lista de IDs processados."""
         try:
             dados = {
-                "index_geral": index_geral,
+                "start_index": start_index,
+                "passos_concluidos": passos_concluidos,
                 "ids_processados": list(ids_processados)
             }
             with open(arquivo, 'w', encoding='utf-8') as f:
                 json.dump(dados, f, indent=4)
-            logger.info(f"Progresso salvou no arquivo: {arquivo}")
+            logger.info(f"Progresso salvo no arquivo: {arquivo} (Passos: {passos_concluidos})")
         except Exception as e:
             logger.error(f"Erro ao salvar progresso: {e}")
 
     def carregar_progresso(self, arquivo="progresso_geral.json"):
-        """Carrega o progresso do arquivo JSON. Retorna (index, ids) ou (0, set())."""
-        if os.path.exists(arquivo):
-            try:
-                with open(arquivo, 'r', encoding='utf-8') as f:
-                    dados = json.load(f)
-                logger.info(f"Progresso carregado do arquivo: {arquivo}")
-                return dados.get("index_geral", 0), set(dados.get("ids_processados", []))
-            except Exception as e:
-                logger.error(f"Erro ao carregar progresso: {e}")
-        return 0, set()
+        """Carrega o progresso. Retorna (start_index, passos, ids) ou (0, 0, set())."""
+        if not os.path.exists(arquivo):
+            return 0, 0, set()
+        
+        try:
+            with open(arquivo, 'r', encoding='utf-8') as f:
+                dados = json.load(f)
+            
+            # Suporta formato antigo (index_geral) e novo (start_index)
+            start_index = dados.get("start_index", dados.get("index_geral", 0))
+            passos = dados.get("passos_concluidos", 0)
+            ids = set(dados.get("ids_processados", []))
+            
+            logger.info(f"Progresso carregado: Inicial={start_index}, Concluídos={passos}, Histórico={len(ids)} IDs")
+            return start_index, passos, ids
+        except Exception as e:
+            logger.error(f"Erro ao carregar progresso: {e}")
+            return 0, 0, set()
 
     def limpar_progresso(self, arquivo="progresso_geral.json"):
         """Deleta o arquivo de progresso quando o ciclo é concluído."""

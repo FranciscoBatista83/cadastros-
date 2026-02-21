@@ -78,31 +78,47 @@ if __name__ == "__main__":
                 modo_geral = True
                 lista_geral = nomes[:-1] # Pega todos exceto o 'Geral'
                 
-                # --- NOVO: Lógica de Persistência ---
-                utilitarios = Utils() # Inicializamos cedo para checar progresso
-                idx_salvo, ids_salvos = utilitarios.carregar_progresso()
+                # --- NOVO: Lógica de Persistência Circular ---
+                utilitarios = Utils()
+                start_index_salvo, passos_salvos, ids_salvos = utilitarios.carregar_progresso()
                 
-                if idx_salvo > 0 or ids_salvos:
-                    print(f"\nFOI DETECTADO UM PROGRESSO ANTERIOR (Usuário {lista_geral[idx_salvo % len(lista_geral)]}).")
-                    print("1. Iniciar do ZERO")
+                if passos_salvos > 0:
+                    auditor_atual = lista_geral[(start_index_salvo + passos_salvos) % len(lista_geral)]
+                    print(f"\nFOI DETECTADO UM PROGRESSO ANTERIOR (Auditor: {auditor_atual}).")
+                    print("1. Iniciar Ciclo do Zero")
                     print("2. Retomar de onde parou")
                     try:
                         decisao = int(input("\nSua escolha: "))
                         if decisao == 2:
-                            index_geral = idx_salvo
-                            usuario_a_cadastrar = lista_geral[index_geral % len(lista_geral)]
-                            logger.info(f"Retomando progresso do usuário: {usuario_a_cadastrar} na posição {index_geral}")
+                            start_index = start_index_salvo
+                            passos_concluidos = passos_salvos
+                            usuario_a_cadastrar = auditor_atual
+                            logger.info(f"Retomando: Inicio em {start_index}, Concluidos {passos_concluidos}, Atual: {usuario_a_cadastrar}")
                         else:
-                            utilitarios.limpar_progresso()
-                            index_geral = 0
-                            usuario_a_cadastrar = lista_geral[0]
-                            logger.info("Reiniciando do zero (arquivo de progresso removido).")
+                            # Iniciar do zero mantendo os IDs históricos (opcional, aqui mantemos os IDs mas limpamos o ciclo)
+                            passos_concluidos = 0
+                            print("\nEscolha em qual auditor deseja INICIAR o ciclo:")
+                            for idx, n in enumerate(lista_geral):
+                                print(f"{idx+1}. {n}")
+                            start_index = int(input("Número: ")) - 1
+                            usuario_a_cadastrar = lista_geral[start_index % len(lista_geral)]
                     except:
-                        index_geral = 0
+                        start_index = 0
+                        passos_concluidos = 0
                         usuario_a_cadastrar = lista_geral[0]
                 else:
-                    index_geral = 0
-                    usuario_a_cadastrar = lista_geral[0]
+                    passos_concluidos = 0
+                    print("\nEscolha em qual auditor deseja INICIAR o ciclo:")
+                    for idx, n in enumerate(lista_geral):
+                        print(f"{idx+1}. {n}")
+                    try:
+                        start_index = int(input("Número: ")) - 1
+                        usuario_a_cadastrar = lista_geral[start_index % len(lista_geral)]
+                    except:
+                        start_index = 0
+                        usuario_a_cadastrar = lista_geral[0]
+                
+                logger.info(f"Modo GERAL iniciado em: {usuario_a_cadastrar} (Índice {start_index})")
                 
                 logger.info("Modo GERAL ativado: o bot irá percorrer todos os usuários da lista.")
         except Exception:
@@ -130,9 +146,9 @@ if __name__ == "__main__":
     
     # Setup Inicial
     if modo_geral:
-        idx_salvo, ids_salvos = utilitarios.carregar_progresso()
-        if ids_salvos:
-            sistema.processados = ids_salvos
+        st_idx, ps_ccl, ids_sv = utilitarios.carregar_progresso()
+        if ids_sv:
+            sistema.processados = ids_sv
     
     configurar_sistema_fiador(sistema, usuario_a_cadastrar)
 
@@ -178,21 +194,22 @@ if __name__ == "__main__":
             
             if not nome or not apolice:
                 if modo_geral:
-                    # Muda para o próximo usuário da lista
-                    index_geral = index_geral + 1
+                    # Incrementa passos no ciclo circular
+                    passos_concluidos += 1
                     
-                    # Se completou toda a lista de usuários
-                    if index_geral >= len(lista_geral):
-                        logger.info("Ciclo GERAL concluído por completo!")
-                        utilitarios.limpar_progresso()
-                        index_geral = 0
+                    # Se completou toda a lista de usuários (ciclo 360º)
+                    if passos_concluidos >= len(lista_geral):
+                        logger.info("Ciclo GERAL de 360º concluído por completo!")
+                        # Mantemos os IDs para o próximo ciclo, mas zeramos o progresso do ciclo atual
+                        utilitarios.salvar_progresso(start_index, 0, sistema.processados)
+                        break # Ou reinicia? Usuário pediu para finalizar o ciclo.
                     else:
-                        utilitarios.salvar_progresso(index_geral, sistema.processados)
+                        utilitarios.salvar_progresso(start_index, passos_concluidos, sistema.processados)
                     
-                    usuario_a_cadastrar = lista_geral[index_geral % len(lista_geral)]
-                    logger.info(f"Sem clientes para o usuário anterior. Mudando para próximo: {usuario_a_cadastrar}")
+                    usuario_a_cadastrar = lista_geral[(start_index + passos_concluidos) % len(lista_geral)]
+                    logger.info(f"Sem clientes para o usuário anterior. Mudando para próximo: {usuario_a_cadastrar} ({passos_concluidos}/{len(lista_geral)})")
                     
-                    sistema.processados.clear()
+                    # IMPORTANTE: NÃO limpamos sistema.processados.clear() para manter a persistência global
                     sistema.selecionar_usuario_menu_auditoria(usuario_a_cadastrar)
                     sistema.abrir_menu_cadastrar_no_agger()
                     continue

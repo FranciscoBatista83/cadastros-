@@ -1,0 +1,10 @@
+playwright
+easyocr
+opencv-python
+numpy
+mss
+pyautogui
+PyGetWindow
+python-dotenv
+# pandas (opcional, dependendo do uso futuro de relatórios)
+# openpyxl (opcional para leitura de excel pelo pandas)

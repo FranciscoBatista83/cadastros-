@@ -1,16 +1,14 @@
-# monitor_utils.py
-"""
-Detecta automaticamente os monitores conectados usando mss.
-Funciona em qualquer resolução e quantidade de monitores.
-"""
+##################################################
+#               monitor_utils.py                 #
+##################################################
+
+# Arquivo responsável pela detecção de monitores. #
+##################################################
 import mss
 from logger import logger
 
 def detectar_monitores():
-    """
-    Retorna uma lista de dicionários com as info de cada monitor.
-    O índice 0 do mss é a tela "combinada", os monitores reais começam no índice 1.
-    """
+    """Lista info de cada monitor"""
     with mss.mss() as sct:
         monitores = []
         for i, m in enumerate(sct.monitors):
@@ -28,9 +26,9 @@ def detectar_monitores():
         return monitores
 
 def get_monitor_principal():
-    """Retorna o monitor principal (geralmente o da esquerda / posição 0,0)"""
+    """Monitor principal (posicao 0,0)"""
     monitores = detectar_monitores()
-    # O monitor principal é o que tem left=0 e top=0
+    # Monitor principal tem left=0 e top=0
     for m in monitores:
         if m["left"] == 0 and m["top"] == 0:
             return m
@@ -38,7 +36,7 @@ def get_monitor_principal():
     return monitores[0] if monitores else {"left": 0, "top": 0, "width": 1600, "height": 900}
 
 def get_monitor_secundario():
-    """Retorna o monitor secundário (o que não é o principal)"""
+    """Monitor secundário"""
     monitores = detectar_monitores()
     principal = get_monitor_principal()
     for m in monitores:

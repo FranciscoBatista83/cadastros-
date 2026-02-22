@@ -1,5 +1,9 @@
-# -*- coding: utf-8 -*-
-# main.py
+##################################################
+#                   main.py                      #
+##################################################
+# Arquivo responsável por orquestração do bot.   #
+##################################################
+
 from navegador import SistemaEmissao
 from agger_bot import AggerDesktop
 from reconhecimento import OCRTimeoutError
@@ -12,7 +16,7 @@ import math
 import time
 from dotenv import load_dotenv
 
-# Carregar variáveis de ambiente
+# Carrega ambiente
 load_dotenv()
 def escolher_unidade():
     print("\nEscolha a unidade:")
@@ -35,15 +39,15 @@ def escolher_unidade():
 if __name__ == "__main__":
     logger.info("==== INÍCIO DA EXECUÇÃO ====")
     
-    # 1. Escolha da Unidade
+    # Seleção da unidade
     PREFIXO = escolher_unidade()
     
-    # 2. Carrega credenciais e URL com base na unidade
+    # Carrega credenciais
     usuario_login = os.getenv(f"FIADOR_USER_{PREFIXO}")
     senha_login = os.getenv(f"FIADOR_PASS_{PREFIXO}")
     url_sistema = os.getenv(f"FIADOR_URL_{PREFIXO}")
 
-    # 3. Definição do Usuário de Auditoria
+    # Define usuário de auditoria
     modo_geral = False
     lista_geral = []
     index_geral = 0
@@ -78,7 +82,7 @@ if __name__ == "__main__":
                 modo_geral = True
                 lista_geral = nomes[:-1] # Pega todos exceto o 'Geral'
                 
-                # --- NOVO: Lógica de Persistência Circular ---
+                # Lógica de Persistência Circular
                 utilitarios = Utils()
                 start_index_salvo, passos_salvos, ids_salvos = utilitarios.carregar_progresso()
                 
@@ -128,7 +132,7 @@ if __name__ == "__main__":
     # Sem limite de erros consecutivos
     erros_limit = math.inf
 
-    # Função auxiliar para configurar o sistema (Login + Auditoria)
+    # Configuração inicial (Login + Auditoria)
     def configurar_sistema_fiador(instancia_sistema, auditor):
         logger.info(f"Configurando acesso para auditor: {auditor}...")
         instancia_sistema.abrir_sistema(url=url_sistema)
@@ -144,7 +148,7 @@ if __name__ == "__main__":
     relatorio_pendentes = RelatorioPendentes()
     agger = AggerDesktop()
     
-    # Setup Inicial
+    # Setup e carregamento de progresso
     if modo_geral:
         st_idx, ps_ccl, ids_sv = utilitarios.carregar_progresso()
         if ids_sv:
@@ -153,16 +157,16 @@ if __name__ == "__main__":
     configurar_sistema_fiador(sistema, usuario_a_cadastrar)
 
     erros_consecutivos = 0
-    contador_nao = 0 # Contador para restauração do Agger
+    contador_nao = 0 # Contador para restauração
     
-    # Controle de Ciclo de Trabalho (3 horas)
+    # Ciclo de 3 horas
     tempo_inicio_trabalho = time.time()
-    LIMITE_TRABALHO_SEGUNDOS = 3 * 3600 # 3 horas
+    LIMITE_TRABALHO_SEGUNDOS = 3 * 3600
     
     # Loop principal
     while True:
         try:
-            # Verifica se atingiu o ciclo de 3 horas de trabalho
+            # Verifica limite de 3 horas
             tempo_atual = time.time()
             if (tempo_atual - tempo_inicio_trabalho) >= LIMITE_TRABALHO_SEGUNDOS:
                 logger.info("==== CICLO DE DESCANSO PREVENTIVO (3H) ====")
@@ -176,7 +180,7 @@ if __name__ == "__main__":
                 # Pausa de 5 minutos
                 time.sleep(300)
                 
-                logger.info("Retomando após descanso. Reiniciando cronômetro e conexão...")
+                logger.info("Retomando após descanso...")
                 tempo_inicio_trabalho = time.time()
                 
                 try:
@@ -233,7 +237,7 @@ if __name__ == "__main__":
                         sleep(10)
                     continue
                 
-            # Controle de recarregamento
+            # Controle de reload
             precisa_recarregar = True
             
             # Pré-processamento
@@ -275,7 +279,7 @@ if __name__ == "__main__":
                     contador_nao = 0
                 continue
                 
-            # Execução no Agger Desktop
+            # Execução no Agger
             logger.info(f"Processando: {nome_limpo} | Apólice: {apolice_tratada}")
             sucesso = agger.processar_cliente(nome_limpo, apolice_tratada, seguradora)
             
@@ -302,7 +306,7 @@ if __name__ == "__main__":
                 sistema.marcar_como_cadastrado(select_element)
                 relatorio.adicionar_registro(nome, apolice, "Sucesso")
                 erros_consecutivos = 0
-                contador_nao = 0 # Resetamos o contador se houve sucesso
+                contador_nao = 0 # Reset se sucesso
                 
                 # Salva progresso após sucesso
                 if modo_geral:
@@ -339,7 +343,7 @@ if __name__ == "__main__":
             msg_erro = str(e).lower()
             if "closed" in msg_erro or "connection" in msg_erro or "target" in msg_erro or "timeout" in msg_erro:
                 logger.error(f"CONEXÃO PERDIDA COM O NAVEGADOR: {e}")
-                logger.info("Iniciando processo de reconexão automática...")
+                logger.info("Reconexão automática...")
                 
                 try:
                     # Tenta encerrar o que sobrou
@@ -352,7 +356,7 @@ if __name__ == "__main__":
                     sistema = SistemaEmissao()
                     sistema.processados = processados_antigos
                     
-                    # Loga e volta para a tela correta
+                    # Loga e retoma
                     configurar_sistema_fiador(sistema, usuario_a_cadastrar)
                     logger.info("Reconexão concluída com sucesso. Retomando processamento.")
                 except Exception as e2:
@@ -362,8 +366,8 @@ if __name__ == "__main__":
                 logger.error(f"Erro inesperado no loop principal: {e}")
                 sleep(10)
         except OCRTimeoutError as e:
-            logger.error(f"TRAVAMENTO DE CPU DETECTADO (OCR TIMEOUT): {e}")
-            logger.info("Encerrando navegador e aguardando 5 minutos para descompressão da CPU...")
+            logger.error(f"CPU TRAVADA (OCR TIMEOUT): {e}")
+            logger.info("Aguardando 5 min para CPU...")
             
             try:
                 sistema.encerrar()
@@ -375,7 +379,7 @@ if __name__ == "__main__":
             
             logger.info("Retomando após pausa preventiva. Reiniciando conexão...")
             try:
-                # Reinicia a instância preservando os clientes já processados
+                # Reinicia preservando processados
                 processados_antigos = sistema.processados.copy()
                 sistema = SistemaEmissao()
                 sistema.processados = processados_antigos

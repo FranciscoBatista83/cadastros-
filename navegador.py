@@ -1,11 +1,16 @@
-# navegador.py
+##################################################
+#                navegador.py                    #
+##################################################
+
+# Arquivo responsável pela automação web.        #
+##################################################
 import os
 from time import sleep
 from playwright.sync_api import sync_playwright
 from logger import logger
 from monitor_utils import get_monitor_principal
 
-# Tempo de espera em segundos para pausas no sistema
+# Esperas e contadores
 PAUSA = 1
 contador = 0
 
@@ -13,7 +18,7 @@ class SistemaEmissao:
     def __init__(self):
         logger.info("Inicializando SistemaEmissao com Playwright")
         
-        # Detecta o monitor principal automaticamente
+        # Detecção de monitor
         self.monitor = get_monitor_principal()
         w = self.monitor["width"]
         h = self.monitor["height"]
@@ -21,7 +26,7 @@ class SistemaEmissao:
         
         self.playwright = sync_playwright().start()
         
-        # Lança o navegador no monitor principal com tamanho correto
+        # Lança navegador
         self.browser = self.playwright.chromium.launch(
             headless=False,
             args=[
@@ -32,8 +37,7 @@ class SistemaEmissao:
         
         self.context = self.browser.new_context(no_viewport=True)
         self.page = self.context.new_page()
-        
-        # Força maximização via CDP
+        # Força maximização
         try:
             cdp = self.context.new_cdp_session(self.page)
             window_id = cdp.send("Browser.getWindowForTarget")["windowId"]
@@ -47,7 +51,7 @@ class SistemaEmissao:
         self.processados = set()
 
     def abrir_sistema(self, url=None):
-        """Abre o sistema de emissão na URL especificada"""
+        """Abre o sistema FiadorWeb"""
         if not url:
             url = os.getenv("FIADOR_URL_JUNDIAI", "https://fiadorweb.com/emissao/docs_agger.php")
         logger.info(f"Abrindo sistema de emissão: {url}")
@@ -55,11 +59,10 @@ class SistemaEmissao:
         self.page.wait_for_load_state("networkidle")
 
     def login(self, usuario, senha):
-        """Realiza o login no sistema"""
+        """Login no sistema"""
         logger.info(f"Realizando login com usuário: {usuario}")
         try:
-            # Se já estivermos logados e carregarmos a URL, podemos ser redirecionados. 
-            # Verificamos se o campo de usuário existe.
+            # Verifica se já está logado
             if not self.page.is_visible("//input[@placeholder='Usuário']"):
                 logger.info("Campo de login não visível, verificando se já estamos logados...")
                 if self.page.is_visible("//i[contains(@class, 'mdi-menu')]") or self.page.is_visible("(//i[contains(@class, 'fa-angle-down')])[2]"):
@@ -77,17 +80,17 @@ class SistemaEmissao:
             if "closed" in str(e).lower() or "connection" in str(e).lower() or "target" in str(e).lower():
                 raise e
     def obter_usuarios_auditoria(self):
-        """Abre o menu 'Auditoria' e extrai os nomes de todos os usuários disponíveis."""
+        """Extrai usuários do menu Auditoria"""
         logger.info("Extraindo lista de usuários do menu Auditoria...")
         try:
-            # Espera e clica no menu dropdown de Auditoria
+            # Abre menu Auditoria
             self.page.wait_for_selector("(//i[contains(@class, 'fa-angle-down')])[2]")
             self.page.click("(//i[contains(@class, 'fa-angle-down')])[2]")
             
             # Espera os itens do menu aparecerem
             self.page.wait_for_selector("//div[contains(@class, 'dropdown-menu')]//a")
             
-            # Obtém todos os links dentro do dropdown que não sejam o primeiro (geralmente o título do menu)
+            # Obtém links
             links = self.page.query_selector_all("//div[contains(@class, 'dropdown-menu')]//a")
             
             usuarios = []
@@ -96,7 +99,7 @@ class SistemaEmissao:
                 if texto and texto not in ["Auditoria", ""]: # Filtra textos vazios ou o próprio nome do menu
                     usuarios.append(texto)
             
-            # Fecha o menu clicando fora ou no mesmo botão (opcional, dependendo do comportamento do site)
+            # Fecha menu
             self.page.click("(//i[contains(@class, 'fa-angle-down')])[2]")
             
             logger.info(f"Usuários encontrados: {usuarios}")
@@ -106,7 +109,7 @@ class SistemaEmissao:
             return []
 
     def selecionar_usuario_menu_auditoria(self, nome_usuario):
-        logger.info(f"Selecionando usuário: {nome_usuario}")
+        """Seleciona auditor específico"""
         try:
             self.page.wait_for_selector("(//i[contains(@class, 'fa-angle-down')])[2]")
             self.page.click("(//i[contains(@class, 'fa-angle-down')])[2]")
@@ -127,7 +130,7 @@ class SistemaEmissao:
         self.page.wait_for_load_state("networkidle")
 
     def obter_proximo_cliente(self):
-        logger.info("Buscando próximo cliente na tabela")
+        """Busca cliente na tabela"""
         try:
             self.page.wait_for_selector('table.table')
             linhas = self.page.query_selector_all('table.table tr')[1:]
@@ -135,7 +138,7 @@ class SistemaEmissao:
                 colunas = linha.query_selector_all('td')
                 if not colunas: continue
                 
-                # Captura o ID Único (geralmente na primeira coluna, começando com #)
+                # Captura ID Único
                 id_unico = colunas[0].inner_text().strip()
                 if not id_unico.startswith("#"):
                     # Fallback para o campo hidden se a coluna 0 não for o ID #
@@ -150,7 +153,7 @@ class SistemaEmissao:
                 select_element = linha.query_selector('select')
                 valor = select_element.input_value() if select_element else ""
                 
-                # Processa tudo que NÃO seja "Sim" e não tenha sido processado ainda
+                # Processa pendentes não visitados
                 if valor != "Sim" and id_unico not in self.processados:
                     self.processados.add(id_unico)
                     linha.scroll_into_view_if_needed()
@@ -158,12 +161,13 @@ class SistemaEmissao:
                     return nome, apolice, seguradora, select_element, id_unico
         except Exception as e:
             logger.error(f"Erro ao obter cliente: {str(e)}")
-            # Se for timeout, pode ser que a sessão expirou e estamos na página de login ou erro
+            # Erro de timeout/sessão
             if "timeout" in str(e).lower() or "closed" in str(e).lower() or "connection" in str(e).lower() or "target" in str(e).lower():
                 raise e
         return None, None, None, None, None
 
     def marcar_como_cadastrado(self, select_element, recarregar=True):
+        """Marca 'Sim' no sistema"""
         if select_element:
             try:
                 if recarregar:
@@ -177,7 +181,7 @@ class SistemaEmissao:
                 if recarregar:
                     self.page.reload()
                     self.page.wait_for_load_state("networkidle")
-                    # Restaura o menu após reload
+                    # Restaura menu
                     try:
                         self.page.click("//i[contains(@class, 'mdi-menu')]", timeout=5000)
                         sleep(1)
@@ -188,6 +192,7 @@ class SistemaEmissao:
                     raise e
 
     def marcar_como_nao_cadastrado(self, select_element, recarregar=True):
+        """Marca 'Não' no sistema"""
         if select_element:
             try:
                 if recarregar:
@@ -212,10 +217,10 @@ class SistemaEmissao:
                     raise e
 
     def recarregar(self):
-        """Tenta limpar o estado da página e garante o menu selecionado"""
+        """Limpa estado e garante menu"""
         logger.info("Verificando/Limpando estado da página web...")
         try:
-            # Tenta fechar possíveis modais que bloqueiam cliques (se houver o botão 'Fechar' ou 'X')
+            # Fecha modais
             for selector in ["button:has-text('Fechar')", ".close", ".modal-header button"]:
                 if self.page.is_visible(selector):
                     logger.info(f"Fechando modal detectado: {selector}")

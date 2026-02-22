@@ -1,4 +1,9 @@
-# relatorios.py
+##################################################
+#                 relatorios.py                  #
+##################################################
+
+# Arquivo responsável pela gestão de relatórios.  #
+##################################################
 import csv
 import os
 from datetime import datetime
@@ -18,7 +23,7 @@ class Relatorio:
                 writer.writerow(self.headers)
 
     def adicionar_registro(self, cliente, apolice, status, motivo=""):
-        """Adiciona uma linha ao relatório"""
+        """Adiciona registro ao relatório"""
         horario = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         try:
             with open(self.filename, mode='a', newline='', encoding='utf-8') as f:
@@ -42,7 +47,7 @@ class RelatorioPendentes:
                 writer.writerow(self.headers)
 
     def ja_existe(self, nome, apolice):
-        """Verifica se o cliente e apólice já estão na planilha para evitar duplicatas"""
+        """Evita duplicatas em pendentes"""
         if not os.path.exists(self.filename):
             return False
         
@@ -58,7 +63,7 @@ class RelatorioPendentes:
         return False
 
     def adicionar_pendente(self, nome, apolice, seguradora, vendedor):
-        """Adiciona um registro à planilha de pendentes se não for duplicado"""
+        """Adiciona pendente sem duplicar"""
         if self.ja_existe(nome, apolice):
             logger.info(f"Pendente já registrado anteriormente: {nome}")
             return False

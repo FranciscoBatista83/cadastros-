@@ -1,4 +1,9 @@
-# agger_bot.py
+##################################################
+#                 agger_bot.py                   #
+##################################################
+
+# Arquivo responsável pela automação do Agger.   #
+##################################################
 import pyautogui
 import pygetwindow as gw
 from time import sleep
@@ -7,7 +12,7 @@ from logger import logger
 
 class AggerDesktop:
     def __init__(self):
-        logger.info("Inicializando AggerDesktop (Dual Monitor Support)")
+        logger.info("Inicializando AggerDesktop")
         self.window = self._localizar_janela()
 
     def _localizar_janela(self):
@@ -54,7 +59,7 @@ class AggerDesktop:
             logger.debug(f"Clique relativo ({x_rel},{y_rel}) -> absoluto ({abs_x},{abs_y})")
 
     def clicar_botao_com_retry(self, nome_imagem, regiao, tentativas=3, espera=5):
-        """Tenta encontrar e clicar num botão, com retry"""
+        """Clica em botão com tentativas"""
         for i in range(tentativas):
             enc, x, y = encontrar_botao(nome_imagem, regiao=regiao)
             if enc:
@@ -72,12 +77,13 @@ class AggerDesktop:
             restaurar_agger(regiao)
 
     def processar_cliente(self, nome, apolice, seguradora):
+        """Fluxo principal de processamento no Agger"""
         logger.info(f"Iniciando Agger: {nome} | Apólice: {apolice}")
         self.focar()
         regiao = self.get_regiao()
 
         try:
-            # 1. Pesquisa — Coordenadas originais: (2831, 65) -> relativo (1231, 65)
+            # Pesquisa cliente
             self.clicar_relativo(1231, 65, clicks=1)
             sleep(0.5)
             self.clicar_relativo(1231, 65, clicks=1)
@@ -89,12 +95,11 @@ class AggerDesktop:
             logger.debug(f"Digitado: {nome}")
             sleep(5)
 
-            # 2. Seleciona cliente — Original: (2063, 108) -> relativo (463, 108)
+            # Seleciona na lista
             self.clicar_relativo(463, 108, clicks=2)
             sleep(7)
 
-            # 3. Localiza apólice via OCR (com scroll dentro da lista)
-            # Aproximadamente no centro da lista (x=400 rel, y=300 rel)
+            # Localiza apólice via OCR
             scroll_x = self.window.left + 400
             scroll_y = self.window.top + 300
             
@@ -110,24 +115,24 @@ class AggerDesktop:
                 restaurar_agger(regiao)
                 return False
 
-            # 4. Clica na apólice (mouse já está na posição correta)
+            # Clica na apólice
             pyautogui.doubleClick(duration=0.3)
             logger.debug("Clicou na apólice")
             sleep(1)
 
-            # 5. Botão 'alterar' (COM RETRY)
+            # Alterar (Retry)
             if not self.clicar_botao_com_retry("alterar.png", regiao, tentativas=3, espera=5):
                 restaurar_agger(regiao)
                 return False
             sleep(7)
 
-            # 6. OK Modal (opcional, sem retry)
+            # Fecha modal OK
             enc, x, y = encontrar_botao("ok_modal.png", regiao=regiao)
             if enc:
                 pyautogui.click(x, y, duration=0.3)
                 sleep(2)
 
-            # 7. Validação de Datas
+            # Validação de Datas
             valido_trans, _, _ = validar_data_preenchida(regiao)
             if not valido_trans:
                 logger.error("Data de transmissão não validada")
@@ -140,7 +145,7 @@ class AggerDesktop:
                 restaurar_agger(regiao)
                 return False
 
-            # 8. Check Apólice — precisa clicar ~15px abaixo do centro da imagem
+            # Botão Check
             enc, x, y = None, None, None
             for i in range(3):
                 enc, x, y = encontrar_botao("check_apolice.png", regiao=regiao)
@@ -155,19 +160,19 @@ class AggerDesktop:
                 return False
             sleep(1)
 
-            # 9. Salvar (COM RETRY)
+            # Salvar (Retry)
             if not self.clicar_botao_com_retry("salvar.png", regiao, tentativas=3, espera=3):
                 restaurar_agger(regiao)
                 return False
             sleep(10)
 
-            # 10. Sim Modal (opcional)
+            # Confirmar Salvar
             enc, x, y = encontrar_botao("sim_modal.png", regiao=regiao)
             if enc:
                 pyautogui.click(x, y, duration=0.3)
                 sleep(1)
 
-            # 11. Voltar (COM RETRY)
+            # Voltar (Retry)
             if not self.clicar_botao_com_retry("voltar.png", regiao, tentativas=3, espera=5):
                 restaurar_agger(regiao)
                 return False

@@ -1,4 +1,9 @@
-# reconhecimento.py
+##################################################
+#               reconhecimento.py                #
+##################################################
+
+# Arquivo responsável pelo processamento de OCR.  #
+##################################################
 import cv2
 import numpy as np
 import easyocr
@@ -12,18 +17,18 @@ from logger import logger
 import os
 import concurrent.futures
 
-# Exceção customizada para timeout de OCR
+# Exceção de timeout OCR
 class OCRTimeoutError(Exception):
     pass
 
-# Inicializar o Reader do EasyOCR (Forçar modo CPU para estabilidade)
+# Inicializa EasyOCR (CPU)
 logger.info("Inicializando EasyOCR Reader (CPU Mode)...")
 reader = easyocr.Reader(['pt', 'en'], gpu=False)
 
 PAUSA = 2
 
 def ler_com_timeout(imagem, timeout=60, **kwargs):
-    """Executa o OCR em uma thread separada com suporte a timeout."""
+    """OCR com thread e timeout"""
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
         future = executor.submit(reader.readtext, imagem, **kwargs)
         try:
@@ -32,24 +37,17 @@ def ler_com_timeout(imagem, timeout=60, **kwargs):
             raise OCRTimeoutError("O processo de OCR excedeu o limite de 60 segundos.")
 
 def limpar_string_comparacao(s):
-    """Remove tudo que não for número"""
+    """Mantém apenas números"""
     return re.sub(r'\D', '', str(s))
 
 def textos_compativeis(alvo, detectado, min_len=5):
-    """
-    Verifica se dois números são compatíveis:
-    - alvo contido no detectado, OU
-    - detectado contido no alvo (caso OCR leia parcial)
-    Exige comprimento mínimo para evitar falsos positivos.
-    """
+    """Verifica compatibilidade de números"""
     if len(detectado) < min_len:
         return False
     return alvo in detectado or detectado in alvo
 
 def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
-    """
-    Localiza um texto na tela usando EasyOCR com sistema de timeout.
-    """
+    """Localiza texto na tela com scroll"""
     logger.info(f"Tentando localizar texto: '{texto_alvo}'")
     
     if regiao is None:
@@ -62,7 +60,7 @@ def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
 
     pendente_encontrado = False
     
-    # --- PASSO 1: Tentar localizar sem nenhum scroll de primeira ---
+    # Passo 1: Busca sem scroll
     logger.info("Tentativa inicial sem scroll...")
     try:
         with mss.mss() as sct:
@@ -87,20 +85,20 @@ def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
     except Exception as e:
         logger.error(f"Erro na busca inicial: {e}")
 
-    # --- PASSO 2: Não achou? Vai para o FINAL da lista com vontade ---
+    # Passo 2: Scroll para o final
     if scroll_pos:
         logger.info("Apólice não visível. Indo para o final da lista...")
         pyautogui.moveTo(scroll_pos[0], scroll_pos[1], duration=0.5)
         pyautogui.click() 
         sleep(0.5)
         pyautogui.press('end')
-        # Reforço com scroll para garantir que o Agger desceu tudo
+        # Reforço de scroll
         for _ in range(20):
             pyautogui.scroll(-3000) 
             sleep(0.3)
         sleep(1.5)
 
-    # --- PASSO 3: Inicia busca subindo ---
+    # Passo 3: Busca subindo
     tentativas_max = 30 
     textos_anteriores = []
     repeticoes_sem_mudanca = 0
@@ -119,7 +117,7 @@ def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
             resultados = ler_com_timeout(img)
             textos_lidos = [r[1].upper() for r in resultados]
             
-            # --- VERIFICAÇÃO DE PENDÊNCIA (SEM INTERROMPER) ---
+            # Verifica pendência
             for txt in textos_lidos:
                 if "PENDENTE" in txt and "EMISS" in txt:
                     if not pendente_encontrado:
@@ -127,7 +125,7 @@ def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
                         pendente_encontrado = True
             # -------------------------------
 
-            # --- OTIMIZAÇÃO: Verifica se a lista parou de rolar ---
+            # Otimização de scroll
             if textos_lidos == textos_anteriores and len(textos_lidos) > 0:
                 repeticoes_sem_mudanca += 1
                 logger.debug(f"Lista estagnada (Repetição {repeticoes_sem_mudanca}/2)")
@@ -171,7 +169,7 @@ def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
         pyautogui.scroll(12) 
         sleep(1.2)
 
-    # --- CONCLUSÃO FINAL ---
+    # Conclusão
     if pendente_encontrado:
         logger.warning(f"Número '{texto_alvo}' NÃO encontrado, mas status PENDENTE foi visto.")
         return "pendente"
@@ -180,6 +178,7 @@ def localizar_texto_na_tela(texto_alvo, regiao=None, scroll_pos=None):
     return False
     
 def encontrar_botao(nome_imagem, regiao=None):
+    """Localiza botão por imagem"""
     if regiao is None:
         with mss_lib.mss() as sct:
             full = sct.monitors[0]
@@ -211,7 +210,7 @@ def encontrar_botao(nome_imagem, regiao=None):
         return False, None, None
 
 def validar_data_preenchida(regiao_janela):
-    logger.info("Validando data preenchida")
+    """Valida se data está preenchida"""
     encontrado, x, y = encontrar_botao("transmissao.png", regiao=regiao_janela)
     if not encontrado:
         return (False, None, None)
@@ -234,7 +233,7 @@ def validar_data_preenchida(regiao_janela):
         return (False, None, None)
 
 def validar_emissao_preenchida(regiao_janela):
-    """Valida o campo Emissão da Apólice. Se estiver vazio, tenta clicar para carregar."""
+    """Valida data de emissão"""
     logger.info("Validando data de emissão preenchida")
     
     def checar_status():
@@ -261,7 +260,7 @@ def validar_emissao_preenchida(regiao_janela):
         _, x, y = encontrar_botao("data.png", regiao=regiao_janela)
         return True, x, y
 
-    # 2. Se falhou, tenta clicar para forçar o carregamento (Double Click)
+    # Tenta carregar se vazio
     logger.warning("Campo de data vazio ou não reconhecido. Tentando duplo clique para carregar...")
     enc_vazia, x_v, y_v = encontrar_botao("data_emissao_vazia.png", regiao=regiao_janela)
     if not enc_vazia:
@@ -283,7 +282,7 @@ def validar_emissao_preenchida(regiao_janela):
     return False, None, None
 
 def restaurar_agger(regiao_janela):
-    logger.info("Executando restauração sequencial: OK -> NÃO -> Cancelar -> Voltar")
+    """Restauração sequencial: OK -> NÃO -> Cancelar -> Voltar"""
     
     # 1. Tenta fechar modais de erro/info
     encontrado, x, y = encontrar_botao('ok_modal.png', regiao=regiao_janela)

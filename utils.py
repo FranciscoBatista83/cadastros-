@@ -65,6 +65,33 @@ class Utils:
         """Data hoje (DD/MM/YYYY)"""
         return datetime.now().strftime("%d/%m/%Y")
 
+
+    def carregar_historico(self, arquivo="historico_sucesso.json"):
+        """Carrega apenas o histórico de IDs de apólices válidas tentadas"""
+        if not os.path.exists(arquivo):
+            return set()
+        try:
+            with open(arquivo, 'r', encoding='utf-8') as f:
+                dados = json.load(f)
+            ids = set(dados)
+            logger.info(f"Histórico de sucesso carregado: {len(ids)} IDs")
+            return ids
+        except Exception as e:
+            logger.error(f"Erro ao carregar histórico: {e}")
+            return set()
+
+    def adicionar_ao_historico(self, id_unico, arquivo="historico_sucesso.json"):
+        """Adiciona um ID ao histórico de sucesso de forma persistente"""
+        try:
+            ids = list(self.carregar_historico(arquivo))
+            if id_unico not in ids:
+                ids.append(id_unico)
+                with open(arquivo, 'w', encoding='utf-8') as f:
+                    json.dump(ids, f, indent=4)
+                logger.info(f"ID {id_unico} adicionado ao histórico de sucesso.")
+        except Exception as e:
+            logger.error(f"Erro ao salvar ID no histórico: {e}")
+
     def limpar_nome(self, nome):
         """Limpa e formata nome do cliente"""
         logger.info(f"Limpando nome: '{nome}'")
@@ -148,48 +175,6 @@ class Utils:
         nome = re.sub(r"[^A-Z ]", "", nome)
         nome = re.sub(r"\s+", " ", nome).strip()
         
+
         logger.info(f"Nome limpo: '{nome}'")
         return nome
-
-    def salvar_progresso(self, start_index, passos_concluidos, ids_processados, arquivo="progresso_geral.json"):
-        """Salva progresso circular e IDs"""
-        try:
-            dados = {
-                "start_index": start_index,
-                "passos_concluidos": passos_concluidos,
-                "ids_processados": list(ids_processados)
-            }
-            with open(arquivo, 'w', encoding='utf-8') as f:
-                json.dump(dados, f, indent=4)
-            logger.info(f"Progresso salvo no arquivo: {arquivo} (Passos: {passos_concluidos})")
-        except Exception as e:
-            logger.error(f"Erro ao salvar progresso: {e}")
-
-    def carregar_progresso(self, arquivo="progresso_geral.json"):
-        """Carrega progresso salvo"""
-        if not os.path.exists(arquivo):
-            return 0, 0, set()
-        
-        try:
-            with open(arquivo, 'r', encoding='utf-8') as f:
-                dados = json.load(f)
-            
-            # Suporta formatos antigo e novo
-            start_index = dados.get("start_index", dados.get("index_geral", 0))
-            passos = dados.get("passos_concluidos", 0)
-            ids = set(dados.get("ids_processados", []))
-            
-            logger.info(f"Progresso carregado: Inicial={start_index}, Concluídos={passos}, Histórico={len(ids)} IDs")
-            return start_index, passos, ids
-        except Exception as e:
-            logger.error(f"Erro ao carregar progresso: {e}")
-            return 0, 0, set()
-
-    def limpar_progresso(self, arquivo="progresso_geral.json"):
-        """Deleta arquivo de progresso ao concluir"""
-        if os.path.exists(arquivo):
-            try:
-                os.remove(arquivo)
-                logger.info(f"Arquivo de progresso {arquivo} removido (ciclo concluído).")
-            except Exception as e:
-                logger.error(f"Erro ao remover arquivo de progresso: {e}")

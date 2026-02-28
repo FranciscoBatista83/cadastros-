@@ -130,38 +130,69 @@ class SistemaEmissao:
         self.page.wait_for_load_state("networkidle")
 
     def obter_proximo_cliente(self):
-        """Busca cliente na tabela"""
+        """Busca o próximo cliente válido filtrando IDs já processados no navegador (O(1) com Set)"""
         try:
             self.page.wait_for_selector('table.table')
-            linhas = self.page.query_selector_all('table.table tr')[1:]
-            for linha in linhas:
-                colunas = linha.query_selector_all('td')
-                if not colunas: continue
+            
+            # Converte o set de processados em lista para o JS
+            lista_processados = list(self.processados)
+            
+            # Extração e Filtragem em Lote via JavaScript
+            # O JS filtrará os IDs usando um Set para performance instantânea
+            cliente_alvo = self.page.evaluate("""(processadosArray) => {
+                const linhas = Array.from(document.querySelectorAll('table.table tr')).slice(1);
+                const processadosSet = new Set(processadosArray);
                 
-                # Captura ID Único
-                id_unico = colunas[0].inner_text().strip()
-                if not id_unico.startswith("#"):
-                    # Fallback para o campo hidden se a coluna 0 não for o ID #
-                    input_hidden = linha.query_selector("input[type='hidden']")
-                    id_unico = input_hidden.get_attribute("value") if input_hidden else f"row_{linhas.index(linha)}"
+                for (let i = 0; i < linhas.length; i++) {
+                    const linha = linhas[i];
+                    const colunas = linha.querySelectorAll('td');
+                    if (colunas.length < 4) continue;
+                    
+                    // Captura ID
+                    let id_unico = colunas[0].innerText.trim();
+                    if (!id_unico.startsWith("#")) {
+                        const inputHidden = linha.querySelector("input[type='hidden']");
+                        id_unico = inputHidden ? inputHidden.value : 'row_' + i;
+                    }
+                    
+                    // Busca instantânea no Set (O(1))
+                    if (processadosSet.has(id_unico)) continue;
+                    
+                    const select = linha.querySelector('select');
+                    const valor = select ? select.value : "";
+                    
+                    // Se já estiver marcado como "Sim", pulamos (já processado no sistema)
+                    if (valor === "Sim") continue;
+                    
+                    const nome = colunas[2].innerText.trim();
+                    const textoApolice = colunas[1].innerText.trim();
+                    const partes = textoApolice.split('\\n');
+                    const apolice = partes.length > 1 ? partes[1] : partes[0];
+                    const seguradora = colunas[3].innerText.trim();
+                    
+                    return { id_unico, nome, apolice, seguradora, index: i };
+                }
+                return null;
+            }""", lista_processados)
+
+            if cliente_alvo:
+                id_unico = cliente_alvo['id_unico']
+                self.processados.add(id_unico)
                 
-                nome = colunas[2].inner_text().strip()
-                texto_col_apolice = colunas[1].inner_text().strip()
-                partes = texto_col_apolice.split('\n')
-                apolice = partes[1] if len(partes) > 1 else partes[0]
-                seguradora = colunas[3].inner_text().strip()
-                select_element = linha.query_selector('select')
-                valor = select_element.input_value() if select_element else ""
+                # Localizador otimizado (nth) para o select
+                select_element = self.page.locator('table.table select').nth(cliente_alvo['index'])
                 
-                # Processa pendentes não visitados
-                if valor != "Sim" and id_unico not in self.processados:
-                    self.processados.add(id_unico)
-                    linha.scroll_into_view_if_needed()
-                    logger.info(f"Cliente: {nome} | Apólice: {apolice} | Seg: {seguradora} | ID: {id_unico}")
-                    return nome, apolice, seguradora, select_element, id_unico
+                # Sincroniza o scroll
+                try:
+                    select_element.scroll_into_view_if_needed()
+                except:
+                    pass
+                
+                logger.info(f"Cliente: {cliente_alvo['nome']} | Apólice: {cliente_alvo['apolice']} | Seg: {cliente_alvo['seguradora']} | ID: {id_unico}")
+                return cliente_alvo['nome'], cliente_alvo['apolice'], cliente_alvo['seguradora'], select_element, id_unico
+                    
         except Exception as e:
             logger.error(f"Erro ao obter cliente: {str(e)}")
-            # Erro de timeout/sessão
             if "timeout" in str(e).lower() or "closed" in str(e).lower() or "connection" in str(e).lower() or "target" in str(e).lower():
                 raise e
         return None, None, None, None, None
@@ -201,7 +232,9 @@ class SistemaEmissao:
                     logger.info("Marcando como 'Não' (sem recarregar)...")
                 
                 select_element.select_option(label="Não")
-                sleep(1)
+                
+                # Tempo reduzido se não for recarregar (apenas para o select registrar)
+                sleep(0.3 if not recarregar else 1)
                 
                 if recarregar:
                     self.page.reload()

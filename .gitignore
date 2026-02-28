@@ -30,3 +30,15 @@ Thumbs.db
 # Relatórios e Depuração
 *.csv
 debug/
+*.log
+
+# Dados de execução local
+historico_sucesso.json
+progresso_geral.json
+*.json.bak
+
+# Playwright/Navegador
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/

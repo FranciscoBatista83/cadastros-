@@ -1,6 +1,7 @@
 ##################################################
 #                   main.py                      #
 ##################################################
+
 # Arquivo responsável por orquestração do bot.   #
 ##################################################
 
@@ -82,48 +83,19 @@ if __name__ == "__main__":
                 modo_geral = True
                 lista_geral = nomes[:-1] # Pega todos exceto o 'Geral'
                 
-                # Lógica de Persistência Circular
-                utilitarios = Utils()
-                start_index_salvo, passos_salvos, ids_salvos = utilitarios.carregar_progresso()
-                
-                if passos_salvos > 0:
-                    auditor_atual = lista_geral[(start_index_salvo + passos_salvos) % len(lista_geral)]
-                    print(f"\nFOI DETECTADO UM PROGRESSO ANTERIOR (Auditor: {auditor_atual}).")
-                    print("1. Iniciar Ciclo do Zero")
-                    print("2. Retomar de onde parou")
-                    try:
-                        decisao = int(input("\nSua escolha: "))
-                        if decisao == 2:
-                            start_index = start_index_salvo
-                            passos_concluidos = passos_salvos
-                            usuario_a_cadastrar = auditor_atual
-                            logger.info(f"Retomando: Inicio em {start_index}, Concluidos {passos_concluidos}, Atual: {usuario_a_cadastrar}")
-                        else:
-                            # Iniciar do zero mantendo os IDs históricos (opcional, aqui mantemos os IDs mas limpamos o ciclo)
-                            passos_concluidos = 0
-                            print("\nEscolha em qual auditor deseja INICIAR o ciclo:")
-                            for idx, n in enumerate(lista_geral):
-                                print(f"{idx+1}. {n}")
-                            start_index = int(input("Número: ")) - 1
-                            usuario_a_cadastrar = lista_geral[start_index % len(lista_geral)]
-                    except:
-                        start_index = 0
-                        passos_concluidos = 0
-                        usuario_a_cadastrar = lista_geral[0]
-                else:
-                    passos_concluidos = 0
-                    print("\nEscolha em qual auditor deseja INICIAR o ciclo:")
-                    for idx, n in enumerate(lista_geral):
-                        print(f"{idx+1}. {n}")
-                    try:
-                        start_index = int(input("Número: ")) - 1
-                        usuario_a_cadastrar = lista_geral[start_index % len(lista_geral)]
-                    except:
-                        start_index = 0
-                        usuario_a_cadastrar = lista_geral[0]
+                # Lógica de Inicialização (Sempre do zero)
+                passos_concluidos = 0
+                print("\nEscolha em qual auditor deseja INICIAR o ciclo:")
+                for idx, n in enumerate(lista_geral):
+                    print(f"{idx+1}. {n}")
+                try:
+                    start_index = int(input("Número: ")) - 1
+                    usuario_a_cadastrar = lista_geral[start_index % len(lista_geral)]
+                except:
+                    start_index = 0
+                    usuario_a_cadastrar = lista_geral[0]
                 
                 logger.info(f"Modo GERAL iniciado em: {usuario_a_cadastrar} (Índice {start_index})")
-                
                 logger.info("Modo GERAL ativado: o bot irá percorrer todos os usuários da lista.")
         except Exception:
             print("Escolha inválida!")
@@ -148,11 +120,10 @@ if __name__ == "__main__":
     relatorio_pendentes = RelatorioPendentes()
     agger = AggerDesktop()
     
-    # Setup e carregamento de progresso
+    # Setup inicial
+    historico_sucesso = utilitarios.carregar_historico()
     if modo_geral:
-        st_idx, ps_ccl, ids_sv = utilitarios.carregar_progresso()
-        if ids_sv:
-            sistema.processados = ids_sv
+        sistema.processados = historico_sucesso
     
     configurar_sistema_fiador(sistema, usuario_a_cadastrar)
 
@@ -204,11 +175,7 @@ if __name__ == "__main__":
                     # Se completou toda a lista de usuários (ciclo 360º)
                     if passos_concluidos >= len(lista_geral):
                         logger.info("Ciclo GERAL de 360º concluído por completo!")
-                        # Mantemos os IDs para o próximo ciclo, mas zeramos o progresso do ciclo atual
-                        utilitarios.salvar_progresso(start_index, 0, sistema.processados)
-                        break # Ou reinicia? Usuário pediu para finalizar o ciclo.
-                    else:
-                        utilitarios.salvar_progresso(start_index, passos_concluidos, sistema.processados)
+                        break 
                     
                     usuario_a_cadastrar = lista_geral[(start_index + passos_concluidos) % len(lista_geral)]
                     logger.info(f"Sem clientes para o usuário anterior. Mudando para próximo: {usuario_a_cadastrar} ({passos_concluidos}/{len(lista_geral)})")
@@ -249,10 +216,6 @@ if __name__ == "__main__":
                 sistema.marcar_como_nao_cadastrado(select_element, recarregar=False)
                 relatorio.adicionar_registro(nome, apolice, "Pulado", "Endosso detectado")
                 precisa_recarregar = False
-                
-                # Salva progresso (marcado como processado para não repetir)
-                if modo_geral:
-                    utilitarios.salvar_progresso(index_geral, sistema.processados)
 
                 contador_nao += 1
                 if contador_nao >= 3:
@@ -268,9 +231,8 @@ if __name__ == "__main__":
                 erros_consecutivos += 1
                 precisa_recarregar = False
                 
-                # Salva progresso
-                if modo_geral:
-                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+                # Registra tentativa no histórico se for válida (não endosso)
+                utilitarios.adicionar_ao_historico(id_unico)
 
                 contador_nao += 1
                 if contador_nao >= 3:
@@ -290,9 +252,8 @@ if __name__ == "__main__":
                 relatorio.adicionar_registro(nome, apolice, "Pendente", "Pendente de Emissão no Agger")
                 erros_consecutivos = 0
                 
-                # Salva progresso
-                if modo_geral:
-                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+                # Registra sucesso/tentativa no histórico
+                utilitarios.adicionar_ao_historico(id_unico)
 
                 contador_nao += 1
                 if contador_nao >= 3:
@@ -308,18 +269,16 @@ if __name__ == "__main__":
                 erros_consecutivos = 0
                 contador_nao = 0 # Reset se sucesso
                 
-                # Salva progresso após sucesso
-                if modo_geral:
-                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+                # Registra sucesso no histórico
+                utilitarios.adicionar_ao_historico(id_unico)
             else:
                 logger.error("Falha no Agger Desktop")
                 sistema.marcar_como_nao_cadastrado(select_element)
                 relatorio.adicionar_registro(nome, apolice, "Falha", "Erro no Agger Desktop")
                 erros_consecutivos += 1
                 
-                # Salva progresso
-                if modo_geral:
-                    utilitarios.salvar_progresso(index_geral, sistema.processados)
+                # Registra tentativa no histórico
+                utilitarios.adicionar_ao_historico(id_unico)
 
                 contador_nao += 1
                 if contador_nao >= 3:
